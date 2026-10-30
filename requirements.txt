@@ -1,0 +1,8 @@
+streamlit
+pandas
+fpdf2
+pydeck
+geonamescache
+folium
+streamlit-folium
+requests
