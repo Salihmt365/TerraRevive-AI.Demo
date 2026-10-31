@@ -14,7 +14,6 @@ import unicodedata
 from datetime import date
 
 import folium
-import geonamescache
 import pandas as pd
 import pydeck as pdk
 import requests
@@ -22,7 +21,7 @@ import streamlit as st
 from fpdf import FPDF
 from streamlit_folium import st_folium
 
-APP_NAME = "SoilRevive"  # <-- change this to your project name
+APP_NAME = "TerraRevive"  # <-- change this to your project name
 
 # ------------------------------------------------------------
 # 1) REFERENCE DATA
@@ -69,17 +68,29 @@ DEFAULT_PLACE = "169389"   # Idlib (GeoNames id)
 # ------------------------------------------------------------
 # 2) WORLD LOCATIONS (GeoNames: every place with 500+ people)
 # ------------------------------------------------------------
+# places.csv.gz and countries.csv come from the GeoNames database.
+# They are stored in a compact file so the app starts fast and uses little memory.
+from collections import namedtuple
+import csv
+import gzip
+from pathlib import Path
+
+Place = namedtuple("Place", ["name", "lat", "lon", "country"])
+DATA_DIR = Path(__file__).parent
+
+
 @st.cache_resource
 def load_world():
-    gc = geonamescache.GeonamesCache(min_city_population=500)
-    countries = {code: c["name"] for code, c in gc.get_countries().items()}
-    places = {}  # country code -> list of places, biggest first
-    for pid, c in gc.get_cities().items():
-        places.setdefault(c["countrycode"], []).append(
-            {"id": pid, "name": c["name"], "lat": c["latitude"], "lon": c["longitude"], "pop": c["population"]})
-    for code in places:
-        places[code].sort(key=lambda p: -p["pop"])
-    by_id = {p["id"]: p for plist in places.values() for p in plist}
+    with open(DATA_DIR / "countries.csv", encoding="utf-8") as f:
+        countries = {row["code"]: row["name"] for row in csv.DictReader(f)}
+    places = {}   # country code -> list of place ids, biggest place first
+    by_id = {}    # place id -> Place
+    with gzip.open(DATA_DIR / "places.csv.gz", "rt", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        next(reader)  # skip header
+        for pid, country, name, lat, lon in reader:
+            by_id[pid] = Place(name, float(lat), float(lon), country)
+            places.setdefault(country, []).append(pid)
     return countries, places, by_id
 
 
@@ -90,7 +101,7 @@ COUNTRY_CODES = sorted([c for c in COUNTRIES if c in PLACES], key=lambda c: COUN
 def place_label(pid):
     p = PLACE_BY_ID[pid]
     # coordinates are shown so places with the same name can be told apart
-    return f"{p['name']}  ({p['lat']:.2f}, {p['lon']:.2f})"
+    return f"{p.name}  ({p.lat:.2f}, {p.lon:.2f})"
 
 
 # ------------------------------------------------------------
@@ -399,7 +410,7 @@ def new_field(name, country=DEFAULT_COUNTRY, place=DEFAULT_PLACE):
     sc = SCENARIOS[FIRST_SCENARIO]
     return {
         "name": name, "country": country, "place": place, "coords_for": place,
-        "lat": p["lat"], "lon": p["lon"], "applied_click": None, "size": 2.5, "crop": "Wheat",
+        "lat": p.lat, "lon": p.lon, "applied_click": None, "size": 2.5, "crop": "Wheat",
         "q1": "No", "q2": "No", "q3": "No", "scenario": FIRST_SCENARIO,
         "metals": {k: float(v) for k, v in sc["metals"].items()},
         "sensors": {k: float(v) for k, v in sc["sensors"].items()},
@@ -505,14 +516,14 @@ with st.sidebar:
     # --- location: choose from a list so every place is identified correctly ---
     bind(st.selectbox, "Country", fid, "info", "country",
          options=COUNTRY_CODES, format_func=lambda c: COUNTRIES[c])
-    place_ids = [p["id"] for p in PLACES[fld["country"]]]
+    place_ids = PLACES[fld["country"]]
     if fld["place"] not in place_ids:          # country changed -> pick its largest place
         fld["place"] = place_ids[0]
         st.session_state.pop(wkey(fid, "info", "place"), None)
     bind(st.selectbox, "Village / town (type to search)", fid, "info", "place",
          options=place_ids, format_func=place_label)
     if fld["coords_for"] != fld["place"]:      # place changed -> move the field pin to that town
-        fld["lat"], fld["lon"] = PLACE_BY_ID[fld["place"]]["lat"], PLACE_BY_ID[fld["place"]]["lon"]
+        fld["lat"], fld["lon"] = PLACE_BY_ID[fld["place"]].lat, PLACE_BY_ID[fld["place"]].lon
         fld["coords_for"] = fld["place"]
     st.caption("Pick the nearest town, then click your exact field on the map in the "
                "**Field location** tab.")
@@ -524,7 +535,7 @@ with st.sidebar:
     bind(st.selectbox, "Example data", fid, "info", "scenario", options=list(SCENARIOS))
     st.button("Load example into this field", on_click=load_scenario, args=(fid,), width="stretch")
 
-location_text = f"{PLACE_BY_ID[fld['place']]['name']}, {COUNTRIES[fld['country']]}"
+location_text = f"{PLACE_BY_ID[fld['place']].name}, {COUNTRIES[fld['country']]}"
 st.markdown(f"**Current field:** {fld['name']} - {location_text}")
 
 tab0, tab1, tab2, tab3, tab4, tab5 = st.tabs(
@@ -552,7 +563,7 @@ with tab0:
              "Switch to **Satellite** (top right) to see the fields themselves.")
     # The base map only depends on the town, so it is NOT reloaded after each click.
     town = PLACE_BY_ID[fld["place"]]
-    m = folium.Map(location=[town["lat"], town["lon"]], zoom_start=14, tiles=None)
+    m = folium.Map(location=[town.lat, town.lon], zoom_start=14, tiles=None)
     folium.TileLayer("OpenStreetMap", name="Map").add_to(m)
     folium.TileLayer(
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
