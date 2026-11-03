@@ -1,7 +1,0 @@
-streamlit
-pandas
-fpdf2
-pydeck
-folium
-streamlit-folium
-requests
