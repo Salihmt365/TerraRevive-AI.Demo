@@ -41,24 +41,30 @@ METALS = {
     "Nickel (Ni)":   {"target": 35,  "intervention": 210, "plants": ["Indian mustard (Brassica juncea)"]},
     "Chromium (Cr)": {"target": 100, "intervention": 380, "plants": ["Indian mustard (Brassica juncea)", "Sunflower (Helianthus annuus)"]},
     "Arsenic (As)":  {"target": 29,  "intervention": 55,  "plants": ["Chinese brake fern (Pteris vittata)"]},
+    # Antimony and mercury are typical military contaminants (ammunition, primers, explosives).
+    "Antimony (Sb)": {"target": 3,   "intervention": 15,  "plants": []},
+    "Mercury (Hg)":  {"target": 0.3, "intervention": 10,  "plants": []},
 }
 
 # Example scenarios so the demo can be shown quickly (SIMULATED data).
 SCENARIOS = {
     "Scenario A - Mostly clean field": {
         "metals": {"Lead (Pb)": 40, "Cadmium (Cd)": 0.4, "Zinc (Zn)": 90, "Copper (Cu)": 25,
-                   "Nickel (Ni)": 20, "Chromium (Cr)": 60, "Arsenic (As)": 10},
-        "sensors": {"moisture": 22, "ph": 7.1, "ec": 1.2, "n": 25, "p": 14, "k": 180},
+                   "Nickel (Ni)": 20, "Chromium (Cr)": 60, "Arsenic (As)": 10, "Antimony (Sb)": 0.8,
+                   "Mercury (Hg)": 0.1},
+        "sensors": {"moisture": 22, "ph": 7.6, "ec": 1.2, "n": 25, "p": 14, "k": 180, "om": 2.5, "cec": 35},
     },
     "Scenario B - Lead & cadmium contamination": {
         "metals": {"Lead (Pb)": 320, "Cadmium (Cd)": 4.5, "Zinc (Zn)": 260, "Copper (Cu)": 45,
-                   "Nickel (Ni)": 30, "Chromium (Cr)": 90, "Arsenic (As)": 18},
-        "sensors": {"moisture": 12, "ph": 5.4, "ec": 2.1, "n": 12, "p": 6, "k": 95},
+                   "Nickel (Ni)": 30, "Chromium (Cr)": 90, "Arsenic (As)": 18, "Antimony (Sb)": 6,
+                   "Mercury (Hg)": 0.4},
+        "sensors": {"moisture": 12, "ph": 8.0, "ec": 2.1, "n": 12, "p": 6, "k": 95, "om": 1.2, "cec": 30},
     },
     "Scenario C - Severe contamination": {
         "metals": {"Lead (Pb)": 780, "Cadmium (Cd)": 14, "Zinc (Zn)": 900, "Copper (Cu)": 210,
-                   "Nickel (Ni)": 60, "Chromium (Cr)": 150, "Arsenic (As)": 62},
-        "sensors": {"moisture": 9, "ph": 8.1, "ec": 4.8, "n": 8, "p": 4, "k": 70},
+                   "Nickel (Ni)": 60, "Chromium (Cr)": 150, "Arsenic (As)": 62, "Antimony (Sb)": 24,
+                   "Mercury (Hg)": 8},
+        "sensors": {"moisture": 9, "ph": 8.1, "ec": 4.8, "n": 8, "p": 4, "k": 70, "om": 0.8, "cec": 25},
     },
 }
 
@@ -66,6 +72,28 @@ CONTAMINATION_SOURCES = [
     "Shelling or bombing", "Military position or base", "Burned or destroyed vehicles",
     "Fuel or oil spills", "Destroyed buildings or rubble", "Ammunition storage", "Unknown",
 ]
+
+# Which laboratory tests are recommended, depending on what happened at the site.
+BASE_TESTS = ["Metals: Pb, Cd, Zn, Cu, Cr, Ni, As, Sb, Hg", "Soil pH, organic matter and cation exchange capacity (CEC)"]
+SOURCE_TESTS = {
+    "Shelling or bombing": ["Explosive compounds (TNT, RDX)", "Nitrate, manganese and phosphorus (explosive residues)"],
+    "Military position or base": ["Fuel residues and PAHs", "PFAS"],
+    "Burned or destroyed vehicles": ["PAHs and fuel residues"],
+    "Fuel or oil spills": ["Fuel residues and PAHs"],
+    "Ammunition storage": ["Explosive compounds (TNT, RDX)", "Nitrate, manganese and phosphorus (explosive residues)"],
+    "Unknown": ["Explosive compounds (TNT, RDX)", "Fuel residues and PAHs", "PFAS",
+                "Nitrate, manganese and phosphorus (explosive residues)"],
+}
+
+
+def recommended_tests(sources):
+    tests = list(BASE_TESTS)
+    for src in sources:
+        for t in SOURCE_TESTS.get(src, []):
+            if t not in tests:
+                tests.append(t)
+    return tests
+
 
 DEFAULT_COUNTRY = "SY"     # Syria
 DEFAULT_PLACE = "169389"   # Idlib (GeoNames id)
@@ -225,9 +253,28 @@ def safety_status(on_record, saw_ordnance, cleared, nearest_hazard_km=None):
 
 # Reference standards. Thresholds differ between countries, so the user chooses
 # which standard to compare with, and the source is always shown.
+CCME_AGRICULTURAL = {  # mg/kg dry weight, agricultural land use (year of each guideline)
+    "Lead (Pb)": 70,       # 2025, provisional final guideline (61 if based on a 0.5 IQ-point decrement)
+    "Cadmium (Cd)": 1.4,   # 1999
+    "Zinc (Zn)": 250,      # 2018
+    "Copper (Cu)": 63,     # 1999
+    "Nickel (Ni)": 45,     # 2015
+    "Chromium (Cr)": 64,   # 1997, total chromium
+    "Arsenic (As)": 12,    # 1997
+    "Antimony (Sb)": 20,   # 1991
+    "Mercury (Hg)": 6.6,   # 1999, inorganic mercury
+}
+
 STANDARDS = {
+    "Canadian Soil Quality Guidelines - agricultural land (CCME)": {
+        "source": "Canadian Council of Ministers of the Environment (CCME), Canadian Soil Quality Guidelines for "
+                  "the Protection of Environmental and Human Health, agricultural land use: Sb 1991; As, Cr 1997; Cd, Cu, Hg 1999; "
+                  "Ni 2015; Zn 2018; Pb 2025 (provisional). https://ccme.ca/en/current-activities/"
+                  "canadian-environmental-quality-guidelines",
+        "values": {name: {"target": v, "intervention": None} for name, v in CCME_AGRICULTURAL.items()},
+    },
     "Dutch soil remediation values (Netherlands)": {
-        "source": "Netherlands Ministry of Housing, Spatial Planning and Environment (VROM), "
+        "source": "Adapted to Dutch soil conditions; shown for comparison only. Netherlands Ministry of Housing, Spatial Planning and Environment (VROM), "
                   "Circular on target values and intervention values for soil remediation (2000).",
         "values": {name: {"target": m["target"], "intervention": m["intervention"]} for name, m in METALS.items()},
     },
@@ -236,20 +283,21 @@ STANDARDS = {
         "values": None,  # filled from the table the user edits
     },
 }
-DEFAULT_STANDARD = list(STANDARDS)[0]
+DEFAULT_STANDARD = list(STANDARDS)[0]   # Canadian guidelines
+DUTCH = list(STANDARDS)[1]
 
 
 def current_refs():
     """The thresholds of the standard chosen by the user."""
     std = st.session_state.get("standard", DEFAULT_STANDARD)
     if STANDARDS[std]["values"] is None:
-        return st.session_state.get("custom_refs", STANDARDS[DEFAULT_STANDARD]["values"])
+        return st.session_state.get("custom_refs", STANDARDS[DUTCH]["values"])
     return STANDARDS[std]["values"]
 
 
 def metal_status(name, value, refs):
     ref = refs[name]
-    if value > ref["intervention"]:
+    if ref["intervention"] is not None and value > ref["intervention"]:
         return "Seriously contaminated"
     if value > ref["target"]:
         return "Elevated"
@@ -265,7 +313,7 @@ def analyse_metals(values, refs):
             "Measured (mg/kg)": value,
             "Target value": ref["target"],
             "Intervention value": ref["intervention"],
-            "% of intervention value": round(100 * value / max(ref["intervention"], 1e-9)),
+            "% of action threshold": round(100 * value / max(ref["intervention"] or ref["target"], 1e-9)),
             "Status": metal_status(name, value, refs),
         })
     return pd.DataFrame(rows)
@@ -298,10 +346,18 @@ def analyse_sensors(s):
     out.append(("Nitrogen N (mg/kg)", s["n"], "Low" if s["n"] < 20 else "Adequate"))
     out.append(("Phosphorus P (mg/kg)", s["p"], "Low" if s["p"] < 10 else "Adequate"))
     out.append(("Potassium K (mg/kg)", s["k"], "Low" if s["k"] < 100 else "Adequate"))
+    out.append(("Organic matter (%)", s["om"], "Low" if s["om"] < 2 else "Adequate"))
+    out.append(("CEC (cmol/kg)", s["cec"], "Low - soil holds nutrients and metals poorly" if s["cec"] < 10
+                else "Adequate"))
     return out
 
 
-def build_plan(metal_df, s):
+def join_and(items):
+    items = list(items)
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def build_plan(metal_df, s, sources=()):
     """Build a step-by-step rehabilitation plan as a list of (phase title, [actions])."""
     plan = []
     elevated = metal_df[metal_df["Status"] != "Normal"]
@@ -315,32 +371,51 @@ def build_plan(metal_df, s):
         actions.append("Contact agricultural or environmental authorities: plants alone may be too slow "
                        "for this level, and professional remediation may be needed.")
     if len(elevated) > 0:
+        mobile = [m for m in elevated["Metal"] if m.startswith(("Cadmium", "Antimony", "Arsenic"))]
+        if s["ph"] > 7.5 and mobile:
+            actions.append("Soil pH is high, as is common in Syria. At higher pH, " + join_and(mobile) +
+                           " can be more available to plants than lead and zinc, so treat them as the priority.")
         plants = []
         for metal in elevated["Metal"]:
             for p in METALS[metal]["plants"]:
                 if p not in plants:
                     plants.append(p)
-        actions.append("Phytoremediation: plant " + " and ".join(plants) +
-                       " to draw metals out of the soil. Expect several growing seasons.")
-        actions.append("WARNING: harvested remediation plants are contaminated. Never eat them or feed them "
-                       "to animals. Dispose of them safely or send them for bioenergy use.")
+        actions.append("Choose the remediation approach with a soil scientist. The key question is whether a plant "
+                       "stores metals in its roots or moves them to its shoots, because the approach is different.")
+        actions.append("Best option where possible: a crop that phytostabilizes - it keeps metals in its roots and "
+                       "does not move them to the shoots. It can be included in the normal crop rotation.")
+        if plants:
+            actions.append("Plants that move metals to their shoots, such as " + join_and(plants) +
+                           ", can remove metals over several seasons; the harvested shoots can be used for "
+                           "phytomining (recovering the metals).")
+        actions.append("WARNING: plants that store metals in their shoots are contaminated. Never eat them or feed "
+                       "them to animals. Handling this biomass safely is not easy - get expert advice before "
+                       "disposal or phytomining.")
         if len(severe) == 0:
             actions.append("Until levels are normal, avoid leafy vegetables and root crops, which absorb the most metals.")
         actions.append("Re-test the soil after each season to track progress.")
     else:
-        actions.append("No heavy metal contamination above target values. Field can return to normal cropping.")
+        actions.append("No metal contamination above the chosen standard. Other contaminants (see recommended "
+                       "laboratory tests) may still be present.")
     plan.append(("Phase 1 - Contamination", actions))
 
     # Phase 2 - soil health
     actions = []
     if s["ph"] < 6.0:
-        actions.append("Apply agricultural lime to raise pH. This also reduces how much metal plants take up.")
+        actions.append("Apply agricultural lime to raise pH. This reduces uptake of metals such as lead and zinc, "
+                       "but can make arsenic and antimony more mobile - get expert advice if these are elevated.")
     elif s["ph"] > 7.5:
         actions.append("Add compost or manure to slowly bring pH closer to neutral.")
     if s["ec"] > 4:
         actions.append("Salinity is high: leach salts with good-quality water where possible and choose salt-tolerant crops such as barley.")
     if s["n"] < 20:
         actions.append("Nitrogen is low: grow legumes (e.g. vetch, chickpea, lentil) to fix nitrogen naturally.")
+    if s["om"] < 2:
+        actions.append("Organic matter is low: add compost or manure. Organic matter also binds metals and "
+                       "reduces their uptake.")
+    if any(x in sources for x in ("Shelling or bombing", "Ammunition storage")):
+        actions.append("Explosive residues can raise nitrate, manganese and phosphorus. Check lab results before "
+                       "adding fertilizer.")
     if s["p"] < 10 or s["k"] < 100:
         actions.append("Phosphorus/potassium is low: add compost or manure; apply mineral fertilizer only after expert advice.")
     if not actions:
@@ -398,6 +473,7 @@ def make_pdf(farmer_name, fld, location, safety, metal_df, sensor_rows, plan, st
     heading("2. Site history")
     line(f"What happened at the site: {fld['history'] or 'Not provided'}")
     line(f"Possible contamination sources: {', '.join(fld['sources']) or 'Not provided'}")
+    line("Recommended laboratory tests: " + "; ".join(recommended_tests(fld["sources"])))
     if fld["photos"]:
         line(f"Photographs: {len(fld['photos'])} attached")
         x = pdf.l_margin
@@ -420,8 +496,9 @@ def make_pdf(farmer_name, fld, location, safety, metal_df, sensor_rows, plan, st
     heading("4. Heavy metals (mg/kg)")
     line(f"Compared with: {standard} - {STANDARDS[standard]['source']}")
     for _, r in metal_df.iterrows():
-        line(f"- {r['Metal']}: {r['Measured (mg/kg)']} (target {r['Target value']}, "
-             f"intervention {r['Intervention value']}) -> {r['Status']}")
+        limits = (f"guideline {r['Target value']}" if pd.isna(r["Intervention value"]) else
+                  f"target {r['Target value']}, intervention {r['Intervention value']}")
+        line(f"- {r['Metal']}: {r['Measured (mg/kg)']} ({limits}) -> {r['Status']}")
     pdf.ln(2)
 
     heading("5. Soil sensor readings")
@@ -440,7 +517,9 @@ def make_pdf(farmer_name, fld, location, safety, metal_df, sensor_rows, plan, st
 
     pdf.ln(3)
     pdf.set_font("Helvetica", "I", 8)
-    line("Thresholds differ between countries; results depend on the standard chosen above. "
+    line("This report covers metals only; organic contaminants (fuel residues, PAHs, explosive compounds, PFAS) "
+         "need separate laboratory analysis. Thresholds differ between countries; results depend on the standard "
+         "chosen above. "
          "Recommendations are rule-based and must be reviewed by an agronomist.")
     return bytes(pdf.output())
 
@@ -690,7 +769,18 @@ safe_to_continue = safety[0] in ("CLEARED", "LOW RISK")
 with tab2:
     if not safe_to_continue:
         st.error("Complete the safety check first. Soil testing is only done on safe fields.")
-    st.subheader("Baseline test - heavy metals (lab or portable XRF)")
+    st.subheader("Recommended laboratory tests for this site")
+    st.write("Based on the site history (Field location tab). Contamination can be very localized, so samples "
+             "should come from the specific places affected; how many are needed depends on the area, the type "
+             "of impact and the elements tested.")
+    for t in recommended_tests(fld["sources"]):
+        st.write("- " + t)
+    st.warning("This version analyses metals only. Organic contaminants such as fuel residues, PAHs, explosive "
+               "compounds (TNT, RDX) or PFAS may also be present and need laboratory analysis.")
+
+    st.subheader("Baseline test - heavy metals (laboratory)")
+    st.caption("Portable XRF is expensive and works well only at high metal contents, so laboratory testing "
+               "is needed.")
     cols = st.columns(4)
     for i, name in enumerate(METALS):
         with cols[i % 4]:
@@ -703,19 +793,26 @@ with tab2:
     with c[3]: bind(st.number_input, "N (mg/kg)", fid, "sensors", "n", min_value=0.0, max_value=1000.0)
     with c[4]: bind(st.number_input, "P (mg/kg)", fid, "sensors", "p", min_value=0.0, max_value=1000.0)
     with c[5]: bind(st.number_input, "K (mg/kg)", fid, "sensors", "k", min_value=0.0, max_value=5000.0)
+    st.subheader("Laboratory soil properties")
+    c2 = st.columns(6)
+    with c2[0]: bind(st.number_input, "Organic matter (%)", fid, "sensors", "om", min_value=0.0, max_value=100.0, step=0.1)
+    with c2[1]: bind(st.number_input, "CEC (cmol/kg)", fid, "sensors", "cec", min_value=0.0, max_value=200.0)
     st.caption("In the field, these values come from commercial soil sensors. Here they are simulated.")
 
     st.subheader("Reference standard")
-    st.write("Soil thresholds differ between countries. Choose the standard to compare your results with.")
+    st.write("Soil thresholds differ between countries and soil types. Syrian soils are mainly clay-rich "
+             "vertisols, so the Canadian guidelines are used by default instead of the Dutch values, which are "
+             "adapted to Dutch soil conditions.")
     std_name = st.selectbox("Compare results with", list(STANDARDS), key="standard")
     if STANDARDS[std_name]["values"] is None:
         if "custom_refs" not in st.session_state:
-            st.session_state.custom_refs = {k: dict(v) for k, v in STANDARDS[DEFAULT_STANDARD]["values"].items()}
+            st.session_state.custom_refs = {k: dict(v) for k, v in STANDARDS[DUTCH]["values"].items()}
         table = pd.DataFrame([{"Metal": k, "Target value": v["target"], "Intervention value": v["intervention"]}
                               for k, v in st.session_state.custom_refs.items()])
         edited = st.data_editor(table, hide_index=True, disabled=["Metal"], key="custom_table", width="stretch")
         st.session_state.custom_refs = {r["Metal"]: {"target": float(r["Target value"]),
-                                                      "intervention": float(r["Intervention value"])}
+                                                      "intervention": (None if pd.isna(r["Intervention value"])
+                                                                       else float(r["Intervention value"]))}
                                         for _, r in edited.iterrows()}
     st.caption("Source: " + STANDARDS[std_name]["source"])
 
@@ -723,7 +820,7 @@ refs = current_refs()
 standard = st.session_state.get("standard", DEFAULT_STANDARD)
 metal_df = analyse_metals(fld["metals"], refs)
 sensor_rows = analyse_sensors(fld["sensors"])
-plan = build_plan(metal_df, fld["sensors"])
+plan = build_plan(metal_df, fld["sensors"], fld["sources"])
 
 # --- Tab 3: analysis and plan ---
 with tab3:
@@ -732,9 +829,12 @@ with tab3:
     else:
         st.subheader("Heavy metal analysis")
         st.caption(f"Compared with: **{standard}**. Source: {STANDARDS[standard]['source']}")
-        st.dataframe(metal_df, hide_index=True, width="stretch")
-        st.write("**% of intervention value** (100% = serious contamination threshold)")
-        st.bar_chart(metal_df.set_index("Metal")["% of intervention value"], horizontal=True)
+        shown = metal_df.rename(columns={"Target value": "Guideline / target value"})
+        shown["Intervention value"] = shown["Intervention value"].astype(object).where(
+            shown["Intervention value"].notna(), "-")
+        st.dataframe(shown, hide_index=True, width="stretch")
+        st.write("**% of action threshold** (100% = the guideline or intervention value of the chosen standard)")
+        st.bar_chart(metal_df.set_index("Metal")["% of action threshold"], horizontal=True)
 
         st.subheader("Soil health")
         st.dataframe(pd.DataFrame(sensor_rows, columns=["Parameter", "Value", "Finding"]),
